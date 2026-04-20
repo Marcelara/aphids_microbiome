@@ -1,0 +1,119 @@
+---
+title: "Untitled"
+author: "Marcela Aragon"
+date: "2025-12-15"
+output: html_document
+---
+
+
+#General settings
+##Loading libraries
+```{r}
+
+#Set working directory to project directory 
+setwd("./")
+getwd() #ok
+
+#data management
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(stringr)
+library(readxl)
+library(data.table)
+library(reshape2)  # For melting data into long format
+library(stringr)
+library(purrr)
+
+#plots
+library(ggplot2)
+library(viridis)
+library(ggpubr) #ggarrange
+library(ggpattern)
+```
+
+##Settings for plots
+```{r}
+# Setting up white background for plots
+theme_set(theme_bw())
+
+# Set default axis looks
+axis_looks <- theme(axis.text.y = element_text(colour = "black", size = 10, face = "plain"))+ #text in y
+  theme(axis.text.x = element_text(colour = "black", size = 12, face = "bold"))+ #text in y
+  theme(axis.title.y = element_text(size = 10, face = "bold",
+                                    margin = ggplot2::margin(t = 0, r = 10, b = 0, l = 0)))+
+  #theme(axis.title.x = element_blank())+ #no x label
+  theme(panel.grid.major = element_blank(), #no grid
+        panel.grid.minor = element_blank())+ #no grid
+  theme(legend.position = "top")+
+  theme(axis.ticks.x = element_blank())+  # removes x-axis ticks
+  theme(
+  panel.spacing = unit(0.1, "lines"),                    # remove space between facets
+  panel.border = element_blank(),                        # remove per-facet borders
+  strip.background = element_rect(fill = "gray90", color = NA),  # keep facet titles
+  panel.background = element_blank(),                    # clean background
+  #panel.grid = element_blank(),                          # no grid lines
+  axis.line = element_line(color = "black", linewidth = 0.3),     # axis lines restored
+  axis.ticks = element_line(color = "black", linewidth = 0.3))     # axis ticks restored)  
+
+```
+
+##Load data
+```{r}
+
+pilot_df <- read_excel("./Data/pilot_dec_25.xlsx")
+pilot_df
+
+#let's make a quick calculation of nymphs/adult
+pilot_df <- pilot_df %>% mutate(Nymphs_per_Adult=Nymphs/Adults)
+
+#let's also have some quick summaries
+pilot_df %>% group_by(Aphid) %>% summarise(mean(Nymphs_per_Adult))
+
+```
+
+#Plot
+```{r}
+
+
+aphid_cols <- c(
+  "Myzus"       = "#5F8D4E",  # muted green
+  "Lipaphis"    = "#2B2B2B",  # dark gray (near black)
+  "Brevicoryne" = "#D8D2B0" )  # gray-yellow, visible on white
+
+#Boxplot
+ggplot(pilot_df, aes(x = Aphid, y = Nymphs_per_Adult, fill=Aphid)) +
+  geom_point(size = 5, position = position_jitter(width = 0.05),
+             color="black", shape=21, stroke=0.6) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.4) +
+  scale_fill_manual(values = aphid_cols) +
+  axis_looks+
+  scale_y_continuous(limits = c(0, 18),
+  breaks = seq(0, 18, by = 1),
+  expand = c(0, 0))+
+  labs( x = "Aphid species",
+    y = "Nymphs per adult",
+    title = "Number of nymphs/adult",
+    subtitle = "Pilot data; points show individual observations, line shows means")
+
+
+#save plot
+mapply(function(x)
+  ggsave(
+  plot = last_plot(),
+  filename =x,
+  path = "./Plots",
+  scale = 2.3,
+  width = 6,
+  height = 5,
+  units = "cm",
+  dpi = 300),
+x=c("nymphs_per_adult.svg",
+    "nymphs_per_adult.png"))
+
+
+
+```
+
+
+

@@ -1,0 +1,403 @@
+---
+title: "Experimental Design"
+author: "Marcela Aragon"
+date: "2026-02-19"
+output: html_document
+---
+
+#Background
+
+This script will deal with making the experimental design for the VA microbiome experiment.
+
+
+This experiment is part of Sofia's PhD proyect that continues the line of SLI1-mediated broad-spectrum resistance. In brief, Karen observed that different hemipteran species were more resistant to sli1-1 and sli1-2 knockout mutant A. thaliana plants, but that this was not the case for the aphid Lipaphis erysimi. Furthermore she saw that L. erysimi aphids spent less time feeding on the phloem of sli1 mutants when compared to M. persicae and B. brassicae. SLI1 proteins localize in sieve elements in the phloem and were found in the stylets of aphid species that had impaired feeding behavior (M. persicae). 
+
+As the effect of SLI1 is broad-spectrum (many species) it is hypothesized that there must be a salivary protein common to this susceptible species which functions as a DAMP. Salivary proteins in aphids can come from themselves but also can be produced by the microbes living in their guts, particularlly the obligate symbiont Buchnera aphidicola. 
+
+RTM2, a heatshock-like protein like SLI1, has been seen restricting long-distance transport of several plant potyviruses. Thus the involvement of SLI1 in plant virus spread is also under question. 
+
+SLI1-mediated resistance could be functioning as a phloem-protein occlusion mechanism. 
+
+The aphid Lipaphis can feed on WT plants after repetitive cell puncturing behavior (R-pd's). It is suggested that these R-pd's include salivations in the same companion cell or sieve element, thus it could be that Lipaphis is secreting effectors in their saliva repetitively as a mechanism to overcome SLI1-mediated resistance. Thus, a comparative analysis between the Lipaphis and other M. persicae and B. brassicae could shed light into why and how it is resistant to SLI1. 
+
+One approach to do this is to investigate their associated microbes, as it has been observed that more than 80% of the proteins found in the saliva of X have a microbial origin. [Look for this study]. Therefore, different microbial species/strains between the resistant and non-resistant aphids could explain the differences in their potential salivary proteins. For this reason, first a simple metabarcoding analysis can be made to have a descriptive overview of which microbes are associated with these aphids and to compare their microbiome community between them. 
+
+Besides from amplicon sequencing, a metagenomic study could shed light into the potential functions and genes these aphid-associated microbes encode. (And could be more directly linked to the salivary proteins of the aphids)
+
+[How are the viruses fitting in this picture?]
+
+Feeding by aphids and other insects is known to change the plant's associated microbiome. This response has been characterized systemically with root microbiome changes after insects feed on the leaves aboveground, but also locally in the direct place of feeding. Aphids in particularly harbor a fascinating microbial community on their guts composed mainly by the strict endosymbiont Buchnera aphidicola, which can be reflected in their saliva as previously mentioned but also on their excreted honeydew.  
+
+The experiment will mainly answer the question of how do the microbiomes of 3 species of aphids differ; 
+1. Myzus persicae
+2. Lipaphis erysimi
+3. Brevicoryne brassicae
+
+
+#Experimental Design
+
+##Load libraries
+```{r}
+
+#Set working directory to project directory 
+setwd("./")
+getwd() #ok
+
+library(dplyr)
+library(tidyr)
+library(writexl)
+library(readxl)
+library(ggplot2)
+
+```
+
+
+#Design
+```{r}
+set.seed(123) 
+
+#number of blocks
+blocks <- 1:12
+
+#Name of 5 treatments
+treatments <- c("Control", "Myzus", "Brevicoryne A", "Lipaphis", "Brevicoryne B")
+
+#Design
+design <- expand_grid(Block = blocks,
+                      Aphid_species = treatments) %>%
+          group_by(Block) %>%
+          slice_sample(prop = 1) %>%      # randomize order of pots within each block
+          mutate(Position = row_number(),  # position 1–5 within each block (super handy for labeling/trays)
+    Rep_per_treatment = 1) %>%
+    ungroup() %>%
+    mutate(ID = row_number())   %>%            # continuous ID across the whole experiment
+    select(ID, Block, Aphid_species, Position)
+
+View(design)
+
+#save it as an excel file
+write_xlsx(design, "./Output/Experimental_design/RCBD_12blocks_5treatments.xlsx")
+
+#In case you'd like to split it by treatment in differen sheets (in Unifarm they need it like this for the colors)
+#design_bysp<- split(design, design$Aphid_species)
+#write_xlsx(design_list, "RCBD_by_species.xlsx")
+
+
+```
+
+#Temporary
+
+```{r}
+# Setting up white background for plots
+theme_set(theme_bw())
+
+# Set default axis looks
+axis_looks <- theme(axis.text.y = element_text(colour = "black", size = 10, face = "plain"))+ #text in y
+  theme(axis.text.x = element_text(colour = "black", size = 12, face = "bold"))+ #text in y
+  theme(axis.title.y = element_text(size = 10, face = "bold",
+                                    margin = ggplot2::margin(t = 0, r = 10, b = 0, l = 0)))+
+  #theme(axis.title.x = element_blank())+ #no x label
+  theme(panel.grid.major = element_blank(), #no grid
+        panel.grid.minor = element_blank())+ #no grid
+  theme(legend.position = "top")+
+  theme(axis.ticks.x = element_blank())+  # removes x-axis ticks
+  theme(
+  panel.spacing = unit(0.1, "lines"),                    # remove space between facets
+  panel.border = element_blank(),                        # remove per-facet borders
+  strip.background = element_rect(fill = "gray90", color = NA),  # keep facet titles
+  panel.background = element_blank(),                    # clean background
+  #panel.grid = element_blank(),                          # no grid lines
+  axis.line = element_line(color = "black", linewidth = 0.3),     # axis lines restored
+  axis.ticks = element_line(color = "black", linewidth = 0.3))     # axis ticks restored)  
+
+```
+
+## Import data
+```{r}
+
+df <- read_excel("./Data/Single_rearings_Bb_Le_March.xlsx")
+str(df)
+
+# Convert columns to factors
+df$Species <- as.factor(df$Species)
+df$ID <- as.factor(df$ID)
+df$Dead <- as.factor(df$Dead)
+
+```
+
+
+#Aphid plots
+```{r}
+
+#First I'd like to know the mortality
+mortality <- df %>%
+  group_by(Species) %>%
+  summarise(
+    Dead_count = sum(Dead == "1", na.rm = TRUE),
+    Total = n(),
+    Mortality = Dead_count / Total)
+
+mortality
+
+#Let's plot it quickly
+ggplot(mortality, aes(x = Species, y = Mortality)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Aphid species", y = "Mortality %", title = "Mortality per aphid species") +
+  theme(legend.position = "none")+
+   ylim(0, 0.5) +
+  axis_looks
+
+```
+
+
+```{r}
+
+df <- df[-58, ]
+
+#including 0's
+fecundity <- df %>%
+  group_by(Species) %>%
+  summarise(nymphs_adult = mean(Nymphs), na.rm = TRUE)
+
+# Including rows where Adults = 0
+fecundity <- df %>%
+  group_by(Species) %>%
+  summarise(
+    mean_nymphs = mean(Nymphs, na.rm = TRUE),
+    sd_nymphs = sd(Nymphs, na.rm = TRUE),
+    n = sum(!is.na(Nymphs)),
+    se_nymphs = sd_nymphs / sqrt(n),
+    .groups = "drop")
+
+# Excluding rows where Adults = 0
+fecundity_without0 <- df %>%
+  filter(Adults > 0) %>%
+  group_by(Species) %>%
+  summarise(
+    mean_nymphs = mean(Nymphs, na.rm = TRUE),
+    sd_nymphs = sd(Nymphs, na.rm = TRUE),
+    n = sum(!is.na(Nymphs)),
+    se_nymphs = sd_nymphs / sqrt(n),
+    .groups = "drop")
+
+
+# Combine for plotting
+avg_plot <- bind_rows(
+  fecundity %>% mutate(Method = "Including Adults = 0"),
+  fecundity_without0 %>% mutate(Method = "Excluding Adults = 0"))
+
+# Plot with error bars
+ggplot(avg_plot, aes(x = Species, y = mean_nymphs, fill = Method)) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(ymin = mean_nymphs - se_nymphs, ymax = mean_nymphs + se_nymphs),
+    position = position_dodge(width = 0.9),
+    width = 0.2
+  ) +
+  labs(
+    x = "Aphid species",
+    y = "Average number of nymphs",
+    fill = "Calculation"
+  ) +
+  axis_looks
+
+
+# Prepare data with the two methods
+df_plot <- bind_rows(
+  df %>% mutate(Method = "Including Adults = 0"),
+  df %>% filter(Adults > 0) %>% mutate(Method = "Excluding Adults = 0")
+)
+
+# Boxplot
+ggplot(df_plot, aes(x = Species, y = Nymphs, fill = Method)) +
+  geom_boxplot(position = position_dodge(width = 0.8), alpha = 0.6) +
+  labs(
+    x = "Aphid species",
+    y = "Number of nymphs",
+    fill = "Calculation"
+  ) +
+  axis_looks
+
+
+
+
+# Prepare data for plotting
+df_plot <- df %>%
+  mutate(Method = ifelse(Adults > 0, "Excluding Adults = 0", "Including Adults = 0"))
+
+
+ggplot(df_plot, aes(x = Species, y = Nymphs, fill = Method)) +
+  geom_boxplot(position = position_dodge(width = 0.8), outlier.shape = NA, alpha = 0.6) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
+              size = 2, alpha = 0.7) +
+  labs(x = "Aphid species", y = "Number of nymphs", fill = "Calculation") +
+  axis_looks
+
+
+
+
+ggplot() +
+  geom_bar(data = avg_plot, aes(x = Species, y = nymphs_adult, fill = Species),
+           stat = "identity", alpha = 0.6) +
+  geom_jitter(data = df, aes(x = Species, y = Nymphs),
+              width = 0.15, size = 2, alpha = 0.8) +
+  labs(x = "Aphid species", y = "Nymphs per adult", title = "Average nymphs per adult with raw data") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+
+# Average nymphs per adult EXCLUDING rows where Adults = 0
+fecundity_without0 <- df %>%
+  filter(Adults > 0) %>%
+  group_by(Species) %>%
+  summarise(nymphs_adult = mean(Nymphs), na.rm = TRUE)
+
+# Combine for plotting
+avg_plot <- bind_rows(
+  fecundity %>% mutate(Method = "Including Adults = 0"),
+  fecundity_without0  %>% mutate(Method = "Excluding Adults = 0"))
+
+#Plot
+ggplot(avg_plot, aes(x = Species, y = nymphs_adult, fill = Method)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Aphid species", y = "Average nymphs per adult", fill = "Calculation") +
+  axis_looks
+
+
+
+#With raw data
+avg_full <- avg_plot %>% filter(Including Adults = 0)
+  
+
+ggplot() +
+  geom_bar(data = avg_plot, aes(x = Species, y = nymphs_adult, fill = Species),
+           stat = "identity", alpha = 0.6) +
+  geom_jitter(data = df, aes(x = Species, y = Nymphs),
+              width = 0.15, size = 2, alpha = 0.8) +
+  labs(x = "Aphid species", y = "Nymphs per adult", title = "Average nymphs per adult with raw data") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+
+
+```
+
+
+## Import data [Exp. April]
+```{r}
+
+df <- read_excel("./Data/Number_Aphids.xlsx")
+str(df)
+
+# Convert columns to factors
+df$Aphid_species <- as.factor(df$Aphid_species)
+df$Block <- as.factor(df$Block)
+df$Dead <- as.factor(df$Dead)
+
+```
+
+Let's plot the number of adults
+```{r}
+
+aphid_cols <- c(
+  "Brevicoryne" = "#D8D2B0",
+   "Lipaphis"    = "#2B2B2B",
+  "Myzus"       = "#5F8D4E")  
+
+
+#Number of adults
+
+#Boxplot
+ggplot(df, aes(x = Aphid_species, y = Adults_wingless, fill=Aphid_species)) +
+  geom_point(size = 5, position = position_jitter(width = 0.05),
+             color="black", shape=21, stroke=0.6) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.4) +
+  scale_fill_manual(values = aphid_cols) +
+  axis_looks+
+  scale_y_continuous(limits = c(0, 13),
+  breaks = seq(0, 18, by = 1),
+  expand = c(0, 0))+
+  labs( x = "Aphid species",
+    y = "Wingless adults/4th instar aphids",
+    title = "Number of adults/plant")
+
+#Number of nymphs/adult
+df <- df %>% mutate(nymphs_adult = Nymphs/Adults_wingless)
+
+ggplot(df, aes(x = Aphid_species, y = nymphs_adult, fill=Aphid_species)) +
+  geom_point(size = 5, position = position_jitter(width = 0.05),
+             color="black", shape=21, stroke=0.6) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.4) +
+  scale_fill_manual(values = aphid_cols) +
+  axis_looks+
+  scale_y_continuous(limits = c(0, 24),
+  breaks = seq(0, 24, by = 1),
+  expand = c(0, 0))+
+  labs( x = "Aphid species",
+    y = "Nymphs/adult",
+    title = "Number of Nymphs/adult")
+
+#Number of nymphs
+df <- df %>% mutate(nymphs_adult = Nymphs/Adults_wingless)
+
+ggplot(df, aes(x = Aphid_species, y = Nymphs, fill=Aphid_species)) +
+  geom_point(size = 5, position = position_jitter(width = 0.05),
+             color="black", shape=21, stroke=0.6) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.4) +
+  scale_fill_manual(values = aphid_cols) +
+  axis_looks+
+  scale_y_continuous(limits = c(0, 100),
+  breaks = seq(0, 100, by = 10),
+  expand = c(0, 0))+
+  labs( x = "Aphid species",
+    y = "Number of Nymphs",
+    title = "Total Number of Nymphs")
+
+#Number of winged aphids
+ggplot(df, aes(x = Aphid_species, y = Winged_adults, fill=Aphid_species)) +
+  geom_point(size = 5, position = position_jitter(width = 0.05),
+             color="black", shape=21, stroke=0.6) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.8) +
+  scale_fill_manual(values = aphid_cols) +
+  axis_looks+
+  scale_y_continuous(limits = c(0, 4),
+  breaks = seq(0, 4, by = 1),
+  expand = c(0, 0))+
+  labs( x = "Aphid species",
+    y = "Winged aphids/plant",
+    title = "Number of winged aphids")
+
+
+library(ggplot2)
+
+ggplot(df, aes(x = Aphid_species, y = Winged_adults, fill = Aphid_species)) +
+  geom_point(
+    size = 5,
+    position = position_jitter(width = 0.05, height = 0),
+    color = "black",
+    shape = 21,
+    stroke = 0.6
+  ) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.4) +
+  scale_fill_manual(values = aphid_cols) +
+  scale_y_continuous(
+    limits = c(0, 4),
+    breaks = seq(0, 4, by = 1),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Aphid species",
+    y = "Winged aphids/plant",
+    title = "Number of winged aphids"
+  ) +
+  axis_looks
+
+
+
+
+```
+
+
+

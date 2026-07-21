@@ -1,0 +1,9 @@
+---
+title: "Gathering_Data"
+author: "Marcela Aragon"
+date: "2026-07-21"
+output: html_document
+---
+
+This script will deal with gathering data from aphids and plants contained in excel files into structured/clean data frames (DFs) that can be used in R
+

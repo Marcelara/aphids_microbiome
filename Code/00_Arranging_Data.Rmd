@@ -19,6 +19,7 @@ library(tidyr)
 library(ggplot2)
 library(tibble)
 library(readxl)
+library(GGally) #ggpairs
 
 ```
 
@@ -82,7 +83,8 @@ DNA_C2 <- DNA_C %>%
     too_low = DeNovix_ng_ul == "too_low",
     Glycerol = DeNovix_ng_ul == "G")
 
-DNA_C2$Glycerol #check
+DNA_C2$Glycerol #check, ok
+str(DNA_C2)
 
 #Count how many were too low per group
 too_low_counts <- DNA_C2 %>%
@@ -91,6 +93,18 @@ too_low_counts <- DNA_C2 %>%
     n_too_low = sum(too_low, na.rm = TRUE),
     n_total = n(),
     .groups = "drop")
+
+#Let's make factors those needed 
+
+DNA_C2 <- 
+
+#count how many samples per sample type and DNA extraction batch
+
+#visualize it with GGally colored by sample type
+ggpairs(DNA_C2[,c("Block","Aphid_species","sample_type", "fraction", "experimental_batch", "DNA_extraction_batch", "concentration")], ggplot2::aes(colour=sample_type))
+
+
+
 
 #Plot it; stacked bar
 too_low_counts <- too_low_counts %>%
@@ -113,5 +127,5 @@ ggplot(too_low_counts , aes(x = batch)) +
 
 Me estoy desesperando porque no me da el numero de samples en leaf_wash, no entiendo pq en el batch 1 tengo solo 8. Si en todos los batches fueron el mismo numero de samples, a veces una menos cuando se incluia el blank 
 
-Necesito primero hacer un overview de cuantas samples tengo por tipo de muestra.
+Necesito primero hacer un overview de cuantas samples tengo por tipo de muestra. Ya ma;ana 
 

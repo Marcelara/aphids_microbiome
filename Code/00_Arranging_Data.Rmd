@@ -5,5 +5,113 @@ date: "2026-07-21"
 output: html_document
 ---
 
-This script will deal with gathering data from aphids and plants contained in excel files into structured/clean data frames (DFs) that can be used in R
+This script will deal with gathering & arranging data from aphids and plants contained in excel files into structured/clean data frames (DFs) that can be used in R
+
+#Load packages
+```{r}
+
+#set working directory to project directory
+
+#Load packages
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(tibble)
+library(readxl)
+
+```
+
+#Load Data
+Now there is a single excel file named All_data.xls with different pieces of data in each tab, let's first explore what is there.
+```{r}
+
+#First tab contains information about the content of all the other tabs
+data_key <- read_xlsx("./Data/All_data_23_07_26.xlsx", sheet="Tab_overview")
+data_key
+
+#Let's keep the first two columns to know what each tab of the excel stands for
+data_key <- data_key[,1:2]
+
+```
+
+
+##DNA extraction
+
+We'll start first with **DNA extraction**, we would like to know;
+
+**1. Which is the median (and distribution) of DNA concentration according to the type of sample.** 
+For now we'll start with the difference between leaf and epiphyte wash as we need this information to calculate the amount of plasmid to be added for spiking the samples. 
+
+**2. If there is a correlation between the amount of leaf material weighed in the powersoil tube and the amount of DNA obtained.** [In this case, only applies to leaves as for the epiphyte wash, all of the samples had the same filter, no weighing of sample was requred.]
+
+**3. To have an overview of which samples will be sequenced (removing those used for Glycerol stocks or those in which the amount of aphids was not enough) & to name them in a more intuitive way for sequencing and future downstream analysis
+
+For that, we first need to **gather & arrange the data into a single df**.
+
+```{r}
+
+#let's see which tabs we are interested in
+data_key
+
+#ED; can tell me more information about the samples?
+#DNA_C; Here is where de deNovix measurements are
+#Leaf_FW; Here is where the weight of whole leaves and ground faction in powersoil tube are 
+
+#Let's load the experimental design tab
+ED <- read_xlsx("./Data/All_data_23_07_26.xlsx", sheet="ED")
+
+#Now the DNA concentration one
+DNA_C <- read_xlsx("./Data/All_data_23_07_26.xlsx", sheet="DNA_C", skip = 1) #The first row its not really the column name, so we skip it
+
+#Finally the weight of leaves
+Leaf_FW <- read_xlsx("./Data/All_data_23_07_26.xlsx", sheet="Leaf_FW") #we'll use this later 
+
+#For now ED is not really giving anything extra, we don't need the Block information, so we'll focus on DNA_C 
+str(DNA_C)
+DNA_C <- DNA_C %>% select(ID, Block, Aphid_species, sample_type, fraction, sample_name,
+                          experimental_batch, DNA_extraction_batch, DeNovix_ng_ul)
+View(DNA_C)
+
+#I need to have a numeric column for the concentration, but I also would like to count how many times there was the value too_low per type of sample and DNA extraction batch
+
+DNA_C$DeNovix_ng_ul
+DNA_C2 <- DNA_C %>%
+  mutate(
+    concentration = suppressWarnings(as.numeric(DeNovix_ng_ul)),
+    too_low = DeNovix_ng_ul == "too_low",
+    Glycerol = DeNovix_ng_ul == "G")
+
+DNA_C2$Glycerol #check
+
+#Count how many were too low per group
+too_low_counts <- DNA_C2 %>%
+  group_by(sample_type, DNA_extraction_batch) %>%
+  summarise(
+    n_too_low = sum(too_low, na.rm = TRUE),
+    n_total = n(),
+    .groups = "drop")
+
+#Plot it; stacked bar
+too_low_counts <- too_low_counts %>%
+  mutate(n_ok = n_total - n_too_low,
+    batch = factor(DNA_extraction_batch, levels = sort(unique(DNA_extraction_batch))),
+    sample_type = factor(sample_type, levels = c("Blank_endo", "Blank_wash", "leaf_endo", "leaf_wash")))
+
+ggplot(too_low_counts , aes(x = batch)) +
+  geom_col(aes(y = n_ok, fill = "OK")) +
+  geom_col(aes(y = n_too_low, fill = "too_low")) +
+  facet_wrap(~ sample_type, nrow=1) +
+  coord_cartesian(ylim = c(0, 12), )+
+  scale_fill_manual(values = c("OK" = "#1b9e77", "too_low" = "#d95f02")) +
+  labs(x = "DNA extraction batch", y = "Count", fill = NULL) +
+  theme_bw()
+
+
+
+```
+
+Me estoy desesperando porque no me da el numero de samples en leaf_wash, no entiendo pq en el batch 1 tengo solo 8. Si en todos los batches fueron el mismo numero de samples, a veces una menos cuando se incluia el blank 
+
+Necesito primero hacer un overview de cuantas samples tengo por tipo de muestra.
 

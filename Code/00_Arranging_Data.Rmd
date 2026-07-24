@@ -20,8 +20,35 @@ library(ggplot2)
 library(tibble)
 library(readxl)
 library(GGally) #ggpairs
+library(purrr)
 
 ```
+
+#Settings for plots
+```{r}
+# Setting up white background for plots
+theme_set(theme_bw())
+
+# Set default axis looks
+axis_looks <- theme(axis.text.y = element_text(colour = "black", size = 10, face = "bold"))+ #text in y
+  theme(axis.text.x = element_text(colour = "black", size = 12, face = "bold"))+ #text in y
+  theme(axis.title.y = element_text(size = 10, face = "bold",
+                                    margin = ggplot2::margin(t = 0, r = 10, b = 0, l = 0)))+
+  #theme(axis.title.x = element_blank())+ #no x label
+  theme(panel.grid.major = element_blank(), #no grid
+        panel.grid.minor = element_blank())+ #no grid
+  theme(legend.position = "top")+
+  #theme(axis.ticks.x = element_blank())+  # removes x-axis ticks
+  theme(
+  #panel.spacing = unit(0.1, "lines"),                    # remove space between facets
+  #panel.border = element_blank(),                        # remove per-facet borders
+  #strip.background = element_rect(fill = "gray90", color = NA),  # keep facet titles
+  panel.background = element_blank(),                    # clean background
+  #panel.grid = element_blank(),                          # no grid lines
+  axis.line = element_line(color = "black", linewidth = 0.3),     # axis lines restored
+  axis.ticks = element_line(color = "black", linewidth = 0.3))     # axis ticks restored)  
+```
+
 
 #Load Data
 Now there is a single excel file named All_data.xls with different pieces of data in each tab, let's first explore what is there.
@@ -79,53 +106,199 @@ View(DNA_C)
 DNA_C$DeNovix_ng_ul
 DNA_C2 <- DNA_C %>%
   mutate(
-    concentration = suppressWarnings(as.numeric(DeNovix_ng_ul)),
-    too_low = DeNovix_ng_ul == "too_low",
-    Glycerol = DeNovix_ng_ul == "G")
+    concentration = suppressWarnings(as.numeric(DeNovix_ng_ul)), #make it numeric and remove those that are not numbers as NA
+    too_low = DeNovix_ng_ul == "too_low", #new column
+    Glycerol = DeNovix_ng_ul == "G") #new column
 
 DNA_C2$Glycerol #check, ok
 str(DNA_C2)
 
-#Count how many were too low per group
-too_low_counts <- DNA_C2 %>%
-  group_by(sample_type, DNA_extraction_batch) %>%
-  summarise(
-    n_too_low = sum(too_low, na.rm = TRUE),
-    n_total = n(),
-    .groups = "drop")
-
 #Let's make factors those needed 
+DNA_C2 <- DNA_C2 %>%
+  mutate(across(
+    c(ID,
+      Block,
+      Aphid_species,
+      sample_type,
+      fraction,
+      sample_name,
+      experimental_batch,
+      DNA_extraction_batch,
+      too_low,
+      Glycerol),
+    as.factor))
 
-DNA_C2 <- 
+str(DNA_C2) #check, ok
 
-#count how many samples per sample type and DNA extraction batch
+```
 
-#visualize it with GGally colored by sample type
-ggpairs(DNA_C2[,c("Block","Aphid_species","sample_type", "fraction", "experimental_batch", "DNA_extraction_batch", "concentration")], ggplot2::aes(colour=sample_type))
+Let's do a quick check of what we have 
+```{r}
 
+DNA_C2$sample_type #let's get rid of the Blank_wash and Blank_endo as it makes it confusing when calculating the amount of samples 
 
+DNA_C2 <- DNA_C2 %>%
+  mutate(
+    blank = sample_type %in% c("Blank_wash", "Blank_endo"),
+    sample_type = case_when(
+      sample_type == "Blank_wash" ~ "leaf_wash", #change it to either leaf_wash or leaf_endo
+      sample_type == "Blank_endo" ~ "leaf_endo",
+      TRUE ~ as.character(sample_type)),
+    sample_type = factor(sample_type),
+    blank = factor(blank, levels = c(FALSE, TRUE))) #make new column to know if they are blanks
 
+#check frequency table per factor to see how many samples are in each.
+DNA_C2 %>% select(where(is.factor)) %>% map(~as.data.frame(table(.x))) #everything looks ok.
 
-#Plot it; stacked bar
-too_low_counts <- too_low_counts %>%
-  mutate(n_ok = n_total - n_too_low,
-    batch = factor(DNA_extraction_batch, levels = sort(unique(DNA_extraction_batch))),
-    sample_type = factor(sample_type, levels = c("Blank_endo", "Blank_wash", "leaf_endo", "leaf_wash")))
+#how many samples per type of fraction?
+DNA_C2 %>% count(
+    experimental_batch,
+    DNA_extraction_batch,
+    fraction,
+    sample_type) %>%  #experimental batch 5 had only 8 samples instead of 12 + four blanks, ok!
+    print(n= Inf)
 
-ggplot(too_low_counts , aes(x = batch)) +
-  geom_col(aes(y = n_ok, fill = "OK")) +
-  geom_col(aes(y = n_too_low, fill = "too_low")) +
-  facet_wrap(~ sample_type, nrow=1) +
-  coord_cartesian(ylim = c(0, 12), )+
-  scale_fill_manual(values = c("OK" = "#1b9e77", "too_low" = "#d95f02")) +
-  labs(x = "DNA extraction batch", y = "Count", fill = NULL) +
+#How many samples in each DNA extraction batch?
+DNA_C2 %>% count(
+    DNA_extraction_batch,
+    fraction,
+    sample_type,
+    Glycerol)
+
+#Now, let's remove the glycerol samples
+DNA_C3 <- DNA_C2 %>% filter(Glycerol == FALSE) %>% droplevels()
+
+```
+
+Too low samples 
+```{r}
+
+#How many of the samples were categorized as "too low" according to the DNA extraction batch? 
+DNA_C3 %>%
+  count(DNA_extraction_batch, sample_type, too_low)
+
+#By percentage
+DNA_C3 %>%
+  count(DNA_extraction_batch, sample_type, too_low) %>%
+  group_by(DNA_extraction_batch, sample_type) %>%
+  mutate(
+    total = sum(n),
+    percent = round(100 * n / total, 1)
+  ) %>%
+  print(n = Inf)
+
+#Stacked plot 
+DNA_C3 %>%
+  ggplot(aes(DNA_extraction_batch, fill = too_low)) +
+  geom_bar() +
+  facet_wrap(~sample_type) +
   theme_bw()
 
+#Now if we add as well how many of those were actually blanks
+ggplot(DNA_C3,
+       aes(x = DNA_extraction_batch,
+           fill = interaction(too_low, blank))) +
+  geom_bar() +
+  facet_wrap(~sample_type) +
+  scale_y_continuous(breaks = seq(0, 12, by = 1)) +
+  axis_looks +
+  labs(fill = "Too low / Blank")
 
 
 ```
 
-Me estoy desesperando porque no me da el numero de samples en leaf_wash, no entiendo pq en el batch 1 tengo solo 8. Si en todos los batches fueron el mismo numero de samples, a veces una menos cuando se incluia el blank 
 
-Necesito primero hacer un overview de cuantas samples tengo por tipo de muestra. Ya ma;ana 
+###DNA plot
+Now I want to know what was my DNA concentration per sample type first, and then split by batch
+
+```{r}
+
+DNA_C3 %>%
+  filter(!is.na(concentration)) %>%
+  ggplot(aes(sample_type, concentration)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(
+    aes(colour = blank),
+    width = 0.15,
+    alpha = 0.7) +
+  axis_looks
+
+#pimp it
+DNA_C3 %>%
+  filter(!is.na(concentration)) %>%
+  ggplot(aes("", concentration)) +
+  geom_boxplot(
+    outlier.shape = 8,
+    outlier.size = 3,
+    outlier.colour = "gray"
+  ) +
+  geom_jitter(
+    aes(colour = blank),
+    width = 0.15,
+    alpha = 0.7
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23,
+    size = 3,
+    fill = "gold"
+  ) +
+  scale_colour_manual(
+    values = c("FALSE" = "black",
+               "TRUE" = "red")
+  ) +
+  facet_wrap(~sample_type, scales = "free_y") +
+  labs(x = NULL) +
+  axis_looks
+
+#Now, let's remove the outlier from leaf_wash that was very high
+DNA_C4 <- DNA_C3 %>% filter(!sample_name == "1E")
+
+#plot it again
+DNA_C4 %>%
+  filter(!is.na(concentration)) %>%
+  ggplot(aes("", concentration)) +
+  geom_boxplot(
+    outlier.shape = 8,
+    outlier.size = 3,
+    outlier.colour = "gray"
+  ) +
+  geom_jitter(
+    aes(colour = blank),
+    width = 0.15,
+    alpha = 0.7
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23,
+    size = 3,
+    fill = "gold"
+  ) +
+  scale_colour_manual(
+    values = c("FALSE" = "black",
+               "TRUE" = "red")
+  ) +
+  facet_wrap(~sample_type, scales = "free_y") +
+  labs(x = NULL) +
+  axis_looks
+
+
+#check mean and median per sample_type
+DNA_C4 %>%
+  filter(!is.na(concentration)) %>%
+  group_by(sample_type) %>%
+  summarise(
+    n = n(),
+    mean = mean(concentration),
+    median = median(concentration),
+    sd = sd(concentration),
+    min = min(concentration),
+    max = max(concentration))
+
+```
+
+I want to know the concentration per type of sample and per batch to see if the first 3 were lower than 4 and 5 as I think it was.
+
 
